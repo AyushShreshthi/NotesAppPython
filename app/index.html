@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Notes App</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+    background: #f5f5f4; margin: 0; padding: 2rem 1rem; color: #1c1917;
+  }
+  .wrap { max-width: 640px; margin: 0 auto; }
+  h1 { font-size: 1.4rem; margin-bottom: 1rem; }
+  .card {
+    background: #fff; border: 1px solid #e7e5e4; border-radius: 10px;
+    padding: 1.25rem; margin-bottom: 1rem;
+  }
+  input, textarea {
+    width: 100%; padding: 0.55rem 0.7rem; margin-bottom: 0.6rem;
+    border: 1px solid #d6d3d1; border-radius: 6px; font-size: 0.95rem; font-family: inherit;
+  }
+  textarea { min-height: 70px; resize: vertical; }
+  button {
+    background: #1c1917; color: #fff; border: none; border-radius: 6px;
+    padding: 0.5rem 0.9rem; font-size: 0.9rem; cursor: pointer;
+  }
+  button.secondary { background: #e7e5e4; color: #1c1917; }
+  button.danger { background: #b91c1c; }
+  button:disabled { opacity: 0.5; cursor: default; }
+  .row { display: flex; gap: 0.5rem; align-items: center; }
+  .top-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+  .note-title { font-weight: 600; margin: 0 0 0.25rem; }
+  .note-content { color: #44403c; font-size: 0.9rem; white-space: pre-wrap; margin: 0 0 0.6rem; }
+  .muted { color: #78716c; font-size: 0.82rem; }
+  .error { color: #b91c1c; font-size: 0.85rem; margin-bottom: 0.6rem; }
+  .link-btn { background: none; color: #1c1917; text-decoration: underline; padding: 0; font-size: 0.85rem; }
+  .pager { display: flex; justify-content: center; gap: 1rem; margin-top: 1rem; align-items: center; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js" crossorigin></script>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useCallback } = React;
+
+// Change this if your backend runs somewhere other than localhost:8000
+const API_BASE = "http://localhost:8000";
+
+function useApi() {
+  const [token, setToken] = useState(() => localStorage.getItem("notes_token") || "");
+
+  const setAuth = (t) => {
+    setToken(t);
+    if (t) localStorage.setItem("notes_token", t);
+    else localStorage.removeItem("notes_token");
+  };
+
+  const request = useCallback(async (path, options = {}) => {
+    const res = await fetch(API_BASE + path, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: "Bearer " + token } : {}),
+        ...(options.headers || {}),
+      },
+    });
+    if (res.status === 204) return null;
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const msg = data.detail || data.message || "Request failed";
+      throw new Error(typeof msg === "string" ? msg : JSON.stringify(msg));
+    }
+    return data;
+  }, [token]);
+
+  return { token, setAuth, request };
+}
+
+function AuthForm({ mode, onSubmit, error, switchMode }) {
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const isSignup = mode === "signup";
+
+  return (
+    <div className="card">
+      <h1>{isSignup ? "Sign up" : "Log in"}</h1>
+      {error && <div className="error">{error}</div>}
+      <form onSubmit={(e) => { e.preventDefault(); onSubmit({ fullName, email, password }); }}>
+        {isSignup && (
+          <input placeholder="Full name" value={fullName}
+            onChange={(e) => setFullName(e.target.value)} required />
+        )}
+        <input type="email" placeholder="Email" value={email}
+          onChange={(e) => setEmail(e.target.value)} required />
+        <input type="password" placeholder="Password" value={password}
+          onChange={(e) => setPassword(e.target.value)} required />
+        <div className="row">
+          <button type="submit">{isSignup ? "Create account" : "Log in"}</button>
+          <button type="button" className="link-btn" onClick={switchMode}>
+            {isSignup ? "Already have an account? Log in" : "Need an account? Sign up"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function NoteForm({ initial, onSave, onCancel }) {
+  const [title, setTitle] = useState(initial?.title || "");
+  const [content, setContent] = useState(initial?.content || "");
+
+  return (
+    <form className="card" onSubmit={(e) => { e.preventDefault(); onSave({ title, content }); }}>
+      <input placeholder="Title" value={title} onChange={(e) => setTitle(e.target.value)} required />
+      <textarea placeholder="Content" value={content} onChange={(e) => setContent(e.target.value)} />
+      <div className="row">
+        <button type="submit">Save</button>
+        {onCancel && <button type="button" className="secondary" onClick={onCancel}>Cancel</button>}
+      </div>
+    </form>
+  );
+}
+
+function NotesView({ request, onLogout }) {
+  const [notes, setNotes] = useState([]);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [editingId, setEditingId] = useState(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [error, setError] = useState("");
+  const pageSize = 5;
+
+  const loadNotes = useCallback(async (p) => {
+    try {
+      setError("");
+      const data = await request(`/notes?page=${p}&page_size=${pageSize}`);
+      setNotes(data.items);
+      setTotalPages(data.total_pages || 1);
+    } catch (e) {
+      setError(e.message);
+    }
+  }, [request]);
+
+  useEffect(() => { loadNotes(page); }, [page, loadNotes]);
+
+  const createNote = async (values) => {
+    try {
+      await request("/notes", { method: "POST", body: JSON.stringify(values) });
+      setShowCreate(false);
+      loadNotes(1);
+      setPage(1);
+    } catch (e) { setError(e.message); }
+  };
+
+  const updateNote = async (id, values) => {
+    try {
+      await request(`/notes/${id}`, { method: "PUT", body: JSON.stringify(values) });
+      setEditingId(null);
+      loadNotes(page);
+    } catch (e) { setError(e.message); }
+  };
+
+  const deleteNote = async (id) => {
+    try {
+      await request(`/notes/${id}`, { method: "DELETE" });
+      loadNotes(page);
+    } catch (e) { setError(e.message); }
+  };
+
+  return (
+    <div>
+      <div className="top-row">
+        <h1>My Notes</h1>
+        <button className="secondary" onClick={onLogout}>Log out</button>
+      </div>
+      {error && <div className="error">{error}</div>}
+
+      {showCreate ? (
+        <NoteForm onSave={createNote} onCancel={() => setShowCreate(false)} />
+      ) : (
+        <button onClick={() => setShowCreate(true)} style={{ marginBottom: "1rem" }}>+ New note</button>
+      )}
+
+      {notes.length === 0 && <p className="muted">No notes yet.</p>}
+
+      {notes.map((n) =>
+        editingId === n.id ? (
+          <NoteForm key={n.id} initial={n}
+            onSave={(values) => updateNote(n.id, values)}
+            onCancel={() => setEditingId(null)} />
+        ) : (
+          <div className="card" key={n.id}>
+            <p className="note-title">{n.title}</p>
+            {n.content && <p className="note-content">{n.content}</p>}
+            <p className="muted">Updated {new Date(n.updated_at).toLocaleString()}</p>
+            <div className="row">
+              <button className="secondary" onClick={() => setEditingId(n.id)}>Edit</button>
+              <button className="danger" onClick={() => deleteNote(n.id)}>Delete</button>
+            </div>
+          </div>
+        )
+      )}
+
+      {totalPages > 1 && (
+        <div className="pager">
+          <button className="secondary" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Prev</button>
+          <span className="muted">Page {page} of {totalPages}</span>
+          <button className="secondary" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>Next</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function App() {
+  const { token, setAuth, request } = useApi();
+  const [mode, setMode] = useState("login");
+  const [authError, setAuthError] = useState("");
+
+  const handleSignup = async ({ fullName, email, password }) => {
+    try {
+      setAuthError("");
+      await request("/auth/signup", {
+        method: "POST",
+        body: JSON.stringify({ full_name: fullName, email, password }),
+      });
+      setMode("login");
+    } catch (e) { setAuthError(e.message); }
+  };
+
+  const handleLogin = async ({ email, password }) => {
+    try {
+      setAuthError("");
+      const data = await request("/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ email, password }),
+      });
+      setAuth(data.access_token);
+    } catch (e) { setAuthError(e.message); }
+  };
+
+  if (!token) {
+    return (
+      <div className="wrap">
+        <AuthForm
+          mode={mode}
+          error={authError}
+          onSubmit={mode === "signup" ? handleSignup : handleLogin}
+          switchMode={() => { setAuthError(""); setMode(mode === "signup" ? "login" : "signup"); }}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="wrap">
+      <NotesView request={request} onLogout={() => setAuth("")} />
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>

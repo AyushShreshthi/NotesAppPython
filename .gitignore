@@ -1,0 +1,44 @@
+# --- Environment & secrets ---
+.env
+.env.*
+!.env.example
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# --- Virtual environments ---
+venv/
+env/
+ENV/
+.venv/
+
+# --- Databases (local/dev artifacts) ---
+*.db
+*.sqlite3
+
+# --- Alembic (keep migration scripts, ignore local cache only if any) ---
+# alembic/versions/  <- do NOT ignore this; migration files should be committed
+
+# --- IDE / editor ---
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# --- Testing / coverage ---
+.pytest_cache/
+.coverage
+htmlcov/
+
+# --- Logs ---
+*.log
+
+# --- OS files ---
+Thumbs.db

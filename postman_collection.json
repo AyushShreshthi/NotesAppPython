@@ -1,0 +1,146 @@
+{
+  "info": {
+    "name": "Notes App Backend",
+    "description": "Signup -> Login -> Create Note -> Get Notes (paginated) -> Get Note by ID -> Update Note -> Delete Note",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8000" },
+    { "key": "auth_token", "value": "" },
+    { "key": "note_id", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1. Signup",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{base_url}}/auth/signup", "host": ["{{base_url}}"], "path": ["auth", "signup"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"full_name\": \"Test User\",\n  \"email\": \"test@example.com\",\n  \"password\": \"pass123\"\n}"
+        }
+      }
+    },
+    {
+      "name": "2. Login",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const data = pm.response.json();",
+              "if (data.access_token) {",
+              "    pm.collectionVariables.set('auth_token', data.access_token);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth", "login"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"test@example.com\",\n  \"password\": \"pass123\"\n}"
+        }
+      }
+    },
+    {
+      "name": "3. Get Profile (protected)",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{auth_token}}" }],
+        "url": { "raw": "{{base_url}}/users/me", "host": ["{{base_url}}"], "path": ["users", "me"] }
+      }
+    },
+    {
+      "name": "4. Create Note",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const data = pm.response.json();",
+              "if (data.id) {",
+              "    pm.collectionVariables.set('note_id', data.id);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+        ],
+        "url": { "raw": "{{base_url}}/notes", "host": ["{{base_url}}"], "path": ["notes"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"My first note\",\n  \"content\": \"Some content here\"\n}"
+        }
+      }
+    },
+    {
+      "name": "5. Get Notes (paginated)",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{auth_token}}" }],
+        "url": {
+          "raw": "{{base_url}}/notes?page=1&page_size=10",
+          "host": ["{{base_url}}"],
+          "path": ["notes"],
+          "query": [
+            { "key": "page", "value": "1" },
+            { "key": "page_size", "value": "10" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "6. Get Note By ID",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{auth_token}}" }],
+        "url": {
+          "raw": "{{base_url}}/notes/{{note_id}}",
+          "host": ["{{base_url}}"],
+          "path": ["notes", "{{note_id}}"]
+        }
+      }
+    },
+    {
+      "name": "7. Update Note",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{auth_token}}" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/notes/{{note_id}}",
+          "host": ["{{base_url}}"],
+          "path": ["notes", "{{note_id}}"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"Updated title\",\n  \"content\": \"Updated content\"\n}"
+        }
+      }
+    },
+    {
+      "name": "8. Delete Note (soft delete)",
+      "request": {
+        "method": "DELETE",
+        "header": [{ "key": "Authorization", "value": "Bearer {{auth_token}}" }],
+        "url": {
+          "raw": "{{base_url}}/notes/{{note_id}}",
+          "host": ["{{base_url}}"],
+          "path": ["notes", "{{note_id}}"]
+        }
+      }
+    }
+  ]
+}
